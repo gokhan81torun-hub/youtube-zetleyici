@@ -21,9 +21,16 @@ Tek yapmanız gereken videonun linkini yapıştırmak!
 # Sidebar - API Anahtarı Girişi
 with st.sidebar:
     st.header("⚙️ Ayarlar")
-    api_key = st.text_input("Google Gemini API Anahtarı", type="password", help="Google AI Studio'dan alacağınız API anahtarı.")
-    st.markdown("[API Anahtarı Nasıl Alınır?](https://aistudio.google.com/app/apikey)")
-    st.info("Bu anahtar sadece bu oturumda kullanılır ve kaydedilmez.")
+    
+    # Önce Secrets'tan (Bulut Kayıtlarından) okumayı dene
+    if "GEMINI_API_KEY" in st.secrets:
+        api_key = st.secrets["GEMINI_API_KEY"]
+        st.success("✅ API Anahtarı Kayıtlı")
+    else:
+        # Yoksa kullanıcıdan iste
+        api_key = st.text_input("Google Gemini API Anahtarı", type="password", help="Google AI Studio'dan alacağınız API anahtarı.")
+        st.markdown("[API Anahtarı Nasıl Alınır?](https://aistudio.google.com/app/apikey)")
+        st.info("Bu anahtar sadece bu oturumda kullanılır.")
 
 # Fonksiyonlar
 def extract_video_id(url):
