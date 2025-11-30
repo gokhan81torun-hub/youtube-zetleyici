@@ -327,49 +327,64 @@ with tab2:
         "Tunç Şatıroğlu": "https://www.youtube.com/@TuncSatiroglu"
     }
     
-    # Kanal Listesi (Gelecekte kullanıcı ekleyebilir, şimdilik sabit)
+    # Kanal Listesi
     selected_channels = st.multiselect(
         "Kontrol edilecek kanalları seçin:",
         options=list(default_channels.keys()),
         default=list(default_channels.keys())
     )
     
+    # Session State Başlatma (Hafıza)
+    if 'channel_results' not in st.session_state:
+        st.session_state.channel_results = {}
+
     if st.button("Kanalları Kontrol Et 📡"):
         if not api_key:
              st.warning("Lütfen önce sol menüden API Anahtarınızı girin.")
         else:
+            st.session_state.channel_results = {} # Önceki sonuçları temizle
             for channel_name in selected_channels:
                 channel_url = default_channels[channel_name]
                 with st.status(f"**{channel_name}** kontrol ediliyor...") as status:
                     latest_video = get_latest_video(channel_url)
-                    
                     if latest_video:
                         status.update(label=f"✅ {channel_name}: Yeni içerik bulundu!", state="complete")
-                        st.markdown(f"### {latest_video['title']}")
-                        st.caption(f"Tür: {latest_video['type']} | [İzle]({latest_video['url']})")
-                        
-                        # Otomatik İşlem Butonu
-                        if st.button(f"Bu Videoyu Özetle ({channel_name})", key=latest_video['url']):
-                             with st.spinner("İçerik çekiliyor..."):
-                                transcript_text = get_transcript(latest_video['url'])
-                                if transcript_text:
-                                    with st.expander("📄 Tam Metin", expanded=True):
-                                        st.text_area(f"Metin - {channel_name}", transcript_text, height=200)
-                                    
-                                    st.download_button(
-                                        label="📥 Metni İndir",
-                                        data=transcript_text,
-                                        file_name=f"{channel_name}_ozet.txt",
-                                        mime="text/plain",
-                                        key=f"dl_{latest_video['url']}"
-                                    )
-                                    
-                                    # Özetleme
-                                    summary = summarize_text(transcript_text, api_key)
-                                    if summary:
-                                        st.markdown(summary)
+                        st.session_state.channel_results[channel_name] = latest_video
                     else:
-                        status.update(label=f"❌ {channel_name}: Yeni video bulunamadı veya erişilemedi.", state="error")
+                        status.update(label=f"❌ {channel_name}: Yeni video bulunamadı.", state="error")
+    
+    # Sonuçları Göster (Butona basılmasa bile hafızadan göster)
+    if st.session_state.channel_results:
+        st.markdown("---")
+        st.subheader("Sonuçlar")
+        
+        for channel_name, video_data in st.session_state.channel_results.items():
+            with st.container():
+                st.markdown(f"### {video_data['title']}")
+                st.caption(f"Kanal: {channel_name} | Tür: {video_data['type']} | [İzle]({video_data['url']})")
+                
+                # Benzersiz key kullanarak butonu oluştur
+                btn_key = f"btn_{video_data['url']}"
+                
+                if st.button(f"Bu Videoyu Özetle 📝", key=btn_key):
+                     with st.spinner(f"{channel_name} videosu özetleniyor..."):
+                        transcript_text = get_transcript(video_data['url'])
+                        if transcript_text:
+                            with st.expander("📄 Tam Metin", expanded=True):
+                                st.text_area(f"Metin - {channel_name}", transcript_text, height=200)
+                            
+                            st.download_button(
+                                label="📥 Metni İndir",
+                                data=transcript_text,
+                                file_name=f"{channel_name}_ozet.txt",
+                                mime="text/plain",
+                                key=f"dl_{video_data['url']}"
+                            )
+                            
+                            # Özetleme
+                            summary = summarize_text(transcript_text, api_key)
+                            if summary:
+                                st.markdown(summary)
 
 # Footer
 st.markdown("---")
