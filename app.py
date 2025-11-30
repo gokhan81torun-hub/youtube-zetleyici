@@ -6,9 +6,14 @@ import os
 
 # Sayfa Ayarları
 st.set_page_config(
-    page_title="YouTube Ekonomi Özeti Asistanı",
-    page_icon="📊",
-    layout="centered"
+    page_title="Youtekonomi",
+    page_icon="favicon.png",
+    layout="centered",
+    menu_items={
+        'Get Help': None,
+        'Report a bug': None,
+        'About': "Youtekonomi - YouTube Ekonomi Asistanı"
+    }
 )
 
 # Başlık ve Açıklama
