@@ -634,8 +634,8 @@ with tab2:
             st.markdown(f"### 📺 {channel_name}")
             for video_data in videos:
                 with st.container():
-                    st.markdown(f"**{video_data['title']}**")
-                    st.caption(f"Tür: {video_data['type']} | Tarih: {video_data['date']} | [İzle]({video_data['url']})")
+                    st.markdown(f"**{video_data['title']}** <span style='color:gray; font-size:0.8em'>({video_data['date']})</span>", unsafe_allow_html=True)
+                    st.caption(f"Tür: {video_data['type']} | [İzle]({video_data['url']})")
                     
                     # Benzersiz key kullanarak butonu oluştur
                     btn_key = f"btn_{video_data['url']}"
