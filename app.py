@@ -515,50 +515,8 @@ def get_channel_id(channel_url):
     except:
         return None
 
-# ... (get_latest_video ve diğer fonksiyonlar aynı) ...
+import xml.etree.ElementTree as ET
 
-# ... (UI Kısmı - Tab 2) ...
-
-    # Sonuçları Göster (Butona basılmasa bile hafızadan göster)
-    if st.session_state.channel_results:
-        st.markdown("---")
-        st.subheader("Sonuçlar")
-        
-        for channel_name, videos in st.session_state.channel_results.items():
-            # Kanal Başlığı ve Logosu
-            channel_url = default_channels.get(channel_name)
-            channel_img = None
-            if channel_url and channel_url in KNOWN_CHANNELS:
-                channel_img = KNOWN_CHANNELS[channel_url]["image"]
-            
-            # Başlık Alanı (Resimli)
-            col_img, col_text = st.columns([1, 6])
-            with col_img:
-                if channel_img:
-                    st.image(channel_img, width=60)
-                else:
-                    st.markdown("📺")
-            with col_text:
-                st.markdown(f"### {channel_name}")
-
-            for video_data in videos:
-                with st.container():
-                    st.markdown(f"**{video_data['title']}** <span style='color:gray; font-size:0.8em'>({video_data['date']})</span>", unsafe_allow_html=True)
-                    st.caption(f"Tür: {video_data['type']} | [İzle]({video_data['url']})")
-                    
-                    # Benzersiz key kullanarak butonu oluştur
-                    btn_key = f"btn_{video_data['url']}"
-                    
-                    if st.button(f"Bu Videoyu Özetle 📝", key=btn_key):
-                         with st.spinner(f"{channel_name} videosu özetleniyor..."):
-                            transcript_text = get_transcript(video_data['url'])
-                            if transcript_text:
-                                with st.expander("📄 Tam Metin", expanded=True):
-                                    st.text_area(f"Metin - {video_data['title']}", transcript_text, height=200)
-                                
-                                st.download_button(
-                                    label="📥 Metni İndir",
-                                    data=transcript_text,
 def get_latest_video(channel_url, debug=False):
     """RSS Beslemesi üzerinden kanalın BUGÜN yayınlanan videolarını bulur."""
     try:
@@ -637,6 +595,59 @@ def get_latest_video(channel_url, debug=False):
     except Exception as e:
         if debug: st.error(f"RSS Genel Hata: {e}")
         return None, None
+
+# ... (UI Kısmı - Tab 2) ...
+
+    # Sonuçları Göster (Butona basılmasa bile hafızadan göster)
+    if st.session_state.channel_results:
+        st.markdown("---")
+        st.subheader("Sonuçlar")
+        
+        for channel_name, videos in st.session_state.channel_results.items():
+            # Kanal Başlığı ve Logosu
+            channel_url = default_channels.get(channel_name)
+            channel_img = None
+            if channel_url and channel_url in KNOWN_CHANNELS:
+                channel_img = KNOWN_CHANNELS[channel_url]["image"]
+            
+            # Başlık Alanı (Resimli)
+            col_img, col_text = st.columns([1, 6])
+            with col_img:
+                if channel_img:
+                    st.image(channel_img, width=60)
+                else:
+                    st.markdown("📺")
+            with col_text:
+                st.markdown(f"### {channel_name}")
+
+            for video_data in videos:
+                with st.container():
+                    st.markdown(f"**{video_data['title']}** <span style='color:gray; font-size:0.8em'>({video_data['date']})</span>", unsafe_allow_html=True)
+                    st.caption(f"Tür: {video_data['type']} | [İzle]({video_data['url']})")
+                    
+                    # Benzersiz key kullanarak butonu oluştur
+                    btn_key = f"btn_{video_data['url']}"
+                    
+                    if st.button(f"Bu Videoyu Özetle 📝", key=btn_key):
+                         with st.spinner(f"{channel_name} videosu özetleniyor..."):
+                            transcript_text = get_transcript(video_data['url'])
+                            if transcript_text:
+                                with st.expander("📄 Tam Metin", expanded=True):
+                                    st.text_area(f"Metin - {video_data['title']}", transcript_text, height=200)
+                                
+                                st.download_button(
+                                    label="📥 Metni İndir",
+                                    data=transcript_text,
+                                    file_name=f"{channel_name}_ozet.txt",
+                                    mime="text/plain",
+                                    key=f"dl_{video_data['url']}"
+                                )
+                                
+                                # Özetleme
+                                summary = summarize_text(transcript_text, api_key)
+                                if summary:
+                                    st.markdown(highlight_keywords(summary), unsafe_allow_html=True)
+            st.markdown("---")
 
 # Ana Arayüz - Sekmeli Yapı
 tab1, tab2 = st.tabs(["📺 Video Linki ile Özetle", "📡 Otomatik Takip"])
