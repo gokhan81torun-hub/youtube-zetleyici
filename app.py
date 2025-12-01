@@ -214,8 +214,8 @@ def get_transcript(video_url):
             selected_sub = None
             if 'tr' in subtitles: selected_sub = subtitles['tr']
             elif 'tr' in auto_captions: selected_sub = auto_captions['tr']
+            elif 'en' in subtitles: selected_sub = auto_captions['en'] # Changed to auto_captions for 'en'
             elif 'en' in subtitles: selected_sub = subtitles['en']
-            elif 'en' in auto_captions: selected_sub = auto_captions['en']
             
             if selected_sub:
                 sub_url = None
@@ -476,45 +476,59 @@ def highlight_keywords(text):
     return text
 
 def get_latest_video(channel_url):
-    """Kanalın en son videosunu bulur."""
+    """Kanalın en son videolarını bulur (son 24 saat içinde yüklenenler)."""
     try:
         ydl_opts = {
             'extract_flat': True, # Sadece başlıkları al, videoyu indirme
-            'playlistend': 1,     # Sadece son 1 video
             'quiet': True,
+            'force_generic_extractor': True, # Genel extractor kullanmaya zorla
+            'playlistend': 10, # Son 10 videoyu kontrol et
         }
+        
+        found_videos = []
+        now = datetime.now()
         
         # Kanalın "videos" ve "streams" (canlı yayın) sekmelerini kontrol et
         # Önce canlı yayınlara bakalım (genelde bunlar isteniyor)
-        target_url = f"{channel_url}/streams"
+        target_urls = [f"{channel_url}/streams", f"{channel_url}/videos"]
         
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            try:
-                info = ydl.extract_info(target_url, download=False)
-                if 'entries' in info and info['entries']:
-                    video = info['entries'][0]
-                    return {
-                        'title': video['title'],
-                        'url': video['url'],
-                        'type': 'Canlı Yayın'
-                    }
-            except:
-                pass # Canlı yayın yoksa normal videolara bak
-
-            # Normal videolar
-            target_url = f"{channel_url}/videos"
-            info = ydl.extract_info(target_url, download=False)
-            if 'entries' in info and info['entries']:
-                video = info['entries'][0]
-                return {
-                    'title': video['title'],
-                    'url': video['url'],
-                    'type': 'Video'
-                }
-                
+        for target_url in target_urls:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                try:
+                    info = ydl.extract_info(target_url, download=False)
+                    if 'entries' in info and info['entries']:
+                        for entry in info['entries']:
+                            if entry and entry.get('url') and entry.get('title'):
+                                upload_date_str = entry.get('upload_date')
+                                if upload_date_str:
+                                    upload_date = datetime.strptime(upload_date_str, '%Y%m%d')
+                                    # Son 24 saat içinde yüklenenleri kontrol et
+                                    if now - upload_date < timedelta(days=1):
+                                        found_videos.append({
+                                            'title': entry['title'],
+                                            'url': entry['url'],
+                                            'type': 'Canlı Yayın' if 'streams' in target_url else 'Video',
+                                            'date': upload_date.strftime("%d.%m.%Y")
+                                        })
+                                # Canlı yayınlar için tarih bilgisi olmayabilir, yine de ekleyelim
+                                elif 'streams' in target_url:
+                                    found_videos.append({
+                                        'title': entry['title'],
+                                        'url': entry['url'],
+                                        'type': 'Canlı Yayın',
+                                        'date': 'Canlı' # Canlı yayınlar için özel etiket
+                                    })
+                                
+                except Exception as e:
+                    # st.warning(f"yt-dlp ile {target_url} kontrol edilirken hata: {e}")
+                    pass # Hata durumunda diğer URL'ye geç
+        
+        # Eğer bugün video yoksa None, varsa listeyi döndür
+        if found_videos:
+            return found_videos # Tüm videoları liste olarak döndür
+            
         return None
     except Exception as e:
-        # st.error(f"Kanal kontrol hatası: {e}")
         return None
 
 # Ana Arayüz - Sekmeli Yapı
@@ -603,39 +617,47 @@ with tab2:
             for channel_name in selected_channels:
                 channel_url = default_channels[channel_name]
                 with st.status(f"**{channel_name}** kontrol ediliyor...") as status:
-                    latest_video = get_latest_video(channel_url)
-                    if latest_video:
-                        status.update(label=f"✅ {channel_name}: Yeni içerik bulundu!", state="complete")
-                        st.session_state.channel_results[channel_name] = latest_video
+                    latest_videos = get_latest_video(channel_url)
+                    if latest_videos:
+                        count = len(latest_videos)
+                        status.update(label=f"✅ {channel_name}: {count} yeni içerik bulundu!", state="complete")
+                        st.session_state.channel_results[channel_name] = latest_videos
                     else:
-                        status.update(label=f"❌ {channel_name}: Yeni video bulunamadı.", state="error")
+                        status.update(label=f"❌ {channel_name}: Bugün yeni video yok.", state="error")
     
     # Sonuçları Göster (Butona basılmasa bile hafızadan göster)
     if st.session_state.channel_results:
         st.markdown("---")
         st.subheader("Sonuçlar")
         
-        for channel_name, video_data in st.session_state.channel_results.items():
-            with st.container():
-                st.markdown(f"### {video_data['title']}")
-                st.caption(f"Kanal: {channel_name} | Tür: {video_data['type']} | [İzle]({video_data['url']})")
-                
-                # Benzersiz key kullanarak butonu oluştur
-                btn_key = f"btn_{video_data['url']}"
-                
-                if st.button(f"Bu Videoyu Özetle 📝", key=btn_key):
-                     with st.spinner(f"{channel_name} videosu özetleniyor..."):
-                        transcript_text = get_transcript(video_data['url'])
-                        if transcript_text:
-                            with st.expander("📄 Tam Metin", expanded=True):
-                                st.text_area(f"Metin - {channel_name}", transcript_text, height=200)
-                            
-                            st.download_button(
-                                label="📥 Metni İndir",
-                                data=transcript_text,
-                                file_name=f"{channel_name}_ozet.txt",
-                                mime="text/plain",
-                                key=f"dl_{video_data['url']}"
-                            )
-                            
-
+        for channel_name, videos in st.session_state.channel_results.items():
+            st.markdown(f"### 📺 {channel_name}")
+            for video_data in videos:
+                with st.container():
+                    st.markdown(f"**{video_data['title']}**")
+                    st.caption(f"Tür: {video_data['type']} | Tarih: {video_data['date']} | [İzle]({video_data['url']})")
+                    
+                    # Benzersiz key kullanarak butonu oluştur
+                    btn_key = f"btn_{video_data['url']}"
+                    
+                    if st.button(f"Bu Videoyu Özetle 📝", key=btn_key):
+                         with st.spinner(f"{channel_name} videosu özetleniyor..."):
+                            transcript_text = get_transcript(video_data['url'])
+                            if transcript_text:
+                                with st.expander("📄 Tam Metin", expanded=True):
+                                    st.text_area(f"Metin - {video_data['title']}", transcript_text, height=200)
+                                
+                                st.download_button(
+                                    label="📥 Metni İndir",
+                                    data=transcript_text,
+                                    file_name=f"{channel_name}_ozet.txt",
+                                    mime="text/plain",
+                                    key=f"dl_{video_data['url']}"
+                                )
+                                
+                                # Özetleme
+                                summary = summarize_text(transcript_text, api_key)
+                                if summary:
+                                    st.markdown(highlight_keywords(summary), unsafe_allow_html=True)
+                st.markdown("---")
+```
