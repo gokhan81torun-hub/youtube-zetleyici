@@ -135,15 +135,23 @@ def get_transcript(video_url):
         print(f"youtube-transcript-api hatası: {e}")
         pass
 
-    # 3. YÖNTEM: Invidious API (Proxy / Yedek Sunucular)
-    # YouTube doğrudan engelliyorsa, aracı sunucular (Invidious) üzerinden deneyelim.
+    # 3. YÖNTEM: Invidious API (Genişletilmiş Liste)
+    import random
     invidious_instances = [
         "https://inv.tux.pizza",
         "https://invidious.projectsegfau.lt",
         "https://vid.puffyan.us",
         "https://invidious.fdn.fr",
-        "https://invidious.drgns.space"
+        "https://invidious.drgns.space",
+        "https://invidious.perennialteks.com",
+        "https://yt.artemislena.eu",
+        "https://invidious.flokinet.to",
+        "https://invidious.privacydev.net",
+        "https://iv.ggtyler.dev",
+        "https://invidious.lunar.icu",
+        "https://yewtu.be"
     ]
+    random.shuffle(invidious_instances) # Her seferinde farklı sırayla dene
 
     video_id = extract_video_id(video_url)
     if not video_id: return None
@@ -152,13 +160,12 @@ def get_transcript(video_url):
         try:
             # Altyazı listesini çek
             list_url = f"{instance}/api/v1/captions/{video_id}"
-            response = requests.get(list_url, timeout=5)
+            response = requests.get(list_url, timeout=3) # Hızlı pes et, diğerine geç
             if response.status_code != 200: continue
             
             captions = response.json()
             selected_caption = None
             
-            # Türkçe veya İngilizce ara
             for cap in captions:
                 if cap['languageCode'] == 'tr':
                     selected_caption = cap
@@ -170,46 +177,45 @@ def get_transcript(video_url):
                         break
             
             if selected_caption:
-                # Altyazıyı indir
                 cap_url = f"{instance}{selected_caption['url']}"
                 cap_response = requests.get(cap_url, timeout=5)
                 
                 if cap_response.status_code == 200:
-                    # VTT formatında gelir, basitçe temizleyelim
-                    # VTT temizliği: Zaman damgalarını ve başlıkları kaldır
                     lines = cap_response.text.splitlines()
                     text_content = ""
                     for line in lines:
                         if "-->" not in line and line.strip() and not line.strip().isdigit() and "WEBVTT" not in line:
                             text_content += line + " "
                     return text_content
-        except Exception as e:
-            print(f"Invidious ({instance}) hatası: {e}")
+        except Exception:
             continue
 
-
-
-    # 4. YÖNTEM: Piped API (Başka bir alternatif)
+    # 4. YÖNTEM: Piped API (Genişletilmiş Liste)
     piped_instances = [
         "https://pipedapi.kavin.rocks",
         "https://pipedapi.tokhmi.xyz",
         "https://pipedapi.moomoo.me",
         "https://api.piped.privacy.com.de",
         "https://pipedapi.smnz.de",
-        "https://pipedapi.adminforge.de"
+        "https://pipedapi.adminforge.de",
+        "https://pipedapi.drgns.space",
+        "https://api.piped.projectsegfau.lt",
+        "https://pipedapi.in.projectsegfau.lt",
+        "https://pipedapi.us.projectsegfau.lt",
+        "https://lo.piped.video",
+        "https://pipedapi.ducks.party"
     ]
+    random.shuffle(piped_instances)
 
     for instance in piped_instances:
         try:
-            # Video bilgilerini çek
-            response = requests.get(f"{instance}/streams/{video_id}", timeout=10)
+            response = requests.get(f"{instance}/streams/{video_id}", timeout=3)
             if response.status_code != 200: continue
             
             data = response.json()
             subtitles = data.get('subtitles', [])
             
             selected_sub = None
-            # Türkçe veya İngilizce ara
             for sub in subtitles:
                 if sub['code'] == 'tr':
                     selected_sub = sub
@@ -221,11 +227,9 @@ def get_transcript(video_url):
                         break
             
             if selected_sub:
-                # Altyazıyı indir
                 sub_url = selected_sub['url']
-                sub_response = requests.get(sub_url)
+                sub_response = requests.get(sub_url, timeout=5)
                 if sub_response.status_code == 200:
-                     # VTT formatında gelir, temizleyelim
                     lines = sub_response.text.splitlines()
                     text_content = ""
                     for line in lines:
@@ -233,11 +237,10 @@ def get_transcript(video_url):
                             text_content += line + " "
                     return text_content
 
-        except Exception as e:
-            print(f"Piped ({instance}) hatası: {e}")
+        except Exception:
             continue
 
-    st.error("Üzgünüm, YouTube şu an tüm kapıları kapatmış durumda (IP Engellemesi). Lütfen 10-15 dakika sonra tekrar deneyin.")
+    st.error("Tüm yöntemler (yt-dlp, youtube-transcript, Invidious, Piped) denendi ancak YouTube IP engellemesi aşılamadı. Lütfen daha sonra tekrar deneyin.")
     return None
 
 def summarize_text(text, api_key):
