@@ -502,8 +502,8 @@ def get_latest_video(channel_url):
                                 upload_date_str = entry.get('upload_date')
                                 if upload_date_str:
                                     upload_date = datetime.strptime(upload_date_str, '%Y%m%d')
-                                    # Son 24 saat içinde yüklenenleri kontrol et
-                                    if now - upload_date < timedelta(days=1):
+                                    # Sadece BUGÜN yüklenenleri kontrol et (Gün/Ay/Yıl eşitliği)
+                                    if upload_date.date() == now.date():
                                         found_videos.append({
                                             'title': entry['title'],
                                             'url': entry['url'],
