@@ -475,21 +475,26 @@ def highlight_keywords(text):
         text = pattern.sub(r'<span style="background-color: #ffd700; color: black; padding: 0px 4px; border-radius: 3px; font-weight: bold;">\1</span>', text)
     return text
 
-import xml.etree.ElementTree as ET
-
-# Bilinen Kanal ID'leri (Scraping hatasını önlemek için)
-KNOWN_CHANNEL_IDS = {
-    "https://www.youtube.com/@cihatecicek": "UCHExW8VqaE0a3W0kwSe_BXg",
-    "https://www.youtube.com/@TuncSatiroglu": "UCOPEaE2I8pf5vHtIIxGT0Rw"
+# Bilinen Kanal Bilgileri (ID ve Resim)
+KNOWN_CHANNELS = {
+    "https://www.youtube.com/@cihatecicek": {
+        "id": "UCHExW8VqaE0a3W0kwSe_BXg",
+        "image": "https://yt3.googleusercontent.com/qR4VTRrsvkQvIoHUX7rZ7cZD-HEeBjXZsYvlXvc6J0dIfPkhfQUEfCJBXG9nd9cguIo-qokd6Q=s900-c-k-c0x00ffffff-no-rj"
+    },
+    "https://www.youtube.com/@TuncSatiroglu": {
+        "id": "UCOPEaE2I8pf5vHtIIxGT0Rw",
+        "image": "https://yt3.googleusercontent.com/2fRcIUMYxzT5KVlxZKyEPuVgHFbWa-PXAsX1_7Xecw7S2GNRvdKFpb8jnxZ-mNUPG4rFYxWY=s900-c-k-c0x00ffffff-no-rj"
+    }
 }
 
 def get_channel_id(channel_url):
     """Kanal URL'sinden Channel ID'yi (UC...) bulur."""
-    # 0. Yöntem: Bilinen ID'lerden kontrol et
-    if channel_url in KNOWN_CHANNEL_IDS:
-        return KNOWN_CHANNEL_IDS[channel_url]
+    # 0. Yöntem: Bilinen Kanallardan kontrol et
+    if channel_url in KNOWN_CHANNELS:
+        return KNOWN_CHANNELS[channel_url]["id"]
 
     try:
+        # ... (Diğer yöntemler aynı kalabilir) ...
         # 1. Yöntem: URL'de zaten ID varsa
         if "/channel/" in channel_url:
             return channel_url.split("/channel/")[1].split("/")[0]
@@ -510,17 +515,60 @@ def get_channel_id(channel_url):
     except:
         return None
 
-def get_latest_video(channel_url, debug=False):
-    """RSS Beslemesi üzerinden kanalın BUGÜN yayınlanan videolarını bulur."""
-    try:
-        channel_id = get_channel_id(channel_url)
+# ... (get_latest_video ve diğer fonksiyonlar aynı) ...
+
+# ... (UI Kısmı - Tab 2) ...
+
+    # Sonuçları Göster (Butona basılmasa bile hafızadan göster)
+    if st.session_state.channel_results:
+        st.markdown("---")
+        st.subheader("Sonuçlar")
         
-        if debug:
-            st.write(f"🆔 Kanal ID: {channel_id}")
+        for channel_name, videos in st.session_state.channel_results.items():
+            # Kanal Başlığı ve Logosu
+            channel_url = default_channels.get(channel_name)
+            channel_img = None
+            if channel_url and channel_url in KNOWN_CHANNELS:
+                channel_img = KNOWN_CHANNELS[channel_url]["image"]
             
-        if not channel_id:
-            if debug: st.error(f"Kanal ID bulunamadı: {channel_url}")
-            return None, None
+            # Başlık Alanı (Resimli)
+            col_img, col_text = st.columns([1, 6])
+            with col_img:
+                if channel_img:
+                    st.image(channel_img, width=60)
+                else:
+                    st.markdown("📺")
+            with col_text:
+                st.markdown(f"### {channel_name}")
+
+            for video_data in videos:
+                with st.container():
+                    st.markdown(f"**{video_data['title']}** <span style='color:gray; font-size:0.8em'>({video_data['date']})</span>", unsafe_allow_html=True)
+                    st.caption(f"Tür: {video_data['type']} | [İzle]({video_data['url']})")
+                    
+                    # Benzersiz key kullanarak butonu oluştur
+                    btn_key = f"btn_{video_data['url']}"
+                    
+                    if st.button(f"Bu Videoyu Özetle 📝", key=btn_key):
+                         with st.spinner(f"{channel_name} videosu özetleniyor..."):
+                            transcript_text = get_transcript(video_data['url'])
+                            if transcript_text:
+                                with st.expander("📄 Tam Metin", expanded=True):
+                                    st.text_area(f"Metin - {video_data['title']}", transcript_text, height=200)
+                                
+                                st.download_button(
+                                    label="📥 Metni İndir",
+                                    data=transcript_text,
+                                    file_name=f"{channel_name}_ozet.txt",
+                                    mime="text/plain",
+                                    key=f"dl_{video_data['url']}"
+                                )
+                                
+                                # Özetleme
+                                summary = summarize_text(transcript_text, api_key)
+                                if summary:
+                                    st.markdown(highlight_keywords(summary), unsafe_allow_html=True)
+            st.markdown("---")
 
         rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
         response = requests.get(rss_url, timeout=5)
@@ -698,8 +746,28 @@ with tab2:
         st.markdown("---")
         st.subheader("Sonuçlar")
         
+    # Sonuçları Göster (Butona basılmasa bile hafızadan göster)
+    if st.session_state.channel_results:
+        st.markdown("---")
+        st.subheader("Sonuçlar")
+        
         for channel_name, videos in st.session_state.channel_results.items():
-            st.markdown(f"### 📺 {channel_name}")
+            # Kanal Başlığı ve Logosu
+            channel_url = default_channels.get(channel_name)
+            channel_img = None
+            if channel_url and channel_url in KNOWN_CHANNELS:
+                channel_img = KNOWN_CHANNELS[channel_url]["image"]
+            
+            # Başlık Alanı (Resimli)
+            col_img, col_text = st.columns([1, 6])
+            with col_img:
+                if channel_img:
+                    st.image(channel_img, width=60)
+                else:
+                    st.markdown("📺")
+            with col_text:
+                st.markdown(f"### {channel_name}")
+
             for video_data in videos:
                 with st.container():
                     st.markdown(f"**{video_data['title']}** <span style='color:gray; font-size:0.8em'>({video_data['date']})</span>", unsafe_allow_html=True)
@@ -727,5 +795,5 @@ with tab2:
                                 summary = summarize_text(transcript_text, api_key)
                                 if summary:
                                     st.markdown(highlight_keywords(summary), unsafe_allow_html=True)
-                st.markdown("---")
+            st.markdown("---")
 
