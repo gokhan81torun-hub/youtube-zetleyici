@@ -187,9 +187,7 @@ def get_transcript(video_url):
             print(f"Invidious ({instance}) hatası: {e}")
             continue
 
-    except Exception as e:
-        print(f"Invidious hatası: {e}")
-        pass
+
 
     # 4. YÖNTEM: Piped API (Başka bir alternatif)
     piped_instances = [
