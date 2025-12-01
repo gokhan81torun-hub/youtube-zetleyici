@@ -477,8 +477,18 @@ def highlight_keywords(text):
 
 import xml.etree.ElementTree as ET
 
+# Bilinen Kanal ID'leri (Scraping hatasını önlemek için)
+KNOWN_CHANNEL_IDS = {
+    "https://www.youtube.com/@cihatecicek": "UCHExW8VqaE0a3W0kwSe_BXg",
+    "https://www.youtube.com/@TuncSatiroglu": "UCOPEaE2I8pf5vHtIIxGT0Rw"
+}
+
 def get_channel_id(channel_url):
     """Kanal URL'sinden Channel ID'yi (UC...) bulur."""
+    # 0. Yöntem: Bilinen ID'lerden kontrol et
+    if channel_url in KNOWN_CHANNEL_IDS:
+        return KNOWN_CHANNEL_IDS[channel_url]
+
     try:
         # 1. Yöntem: URL'de zaten ID varsa
         if "/channel/" in channel_url:
@@ -504,6 +514,10 @@ def get_latest_video(channel_url, debug=False):
     """RSS Beslemesi üzerinden kanalın BUGÜN yayınlanan videolarını bulur."""
     try:
         channel_id = get_channel_id(channel_url)
+        
+        if debug:
+            st.write(f"🆔 Kanal ID: {channel_id}")
+            
         if not channel_id:
             if debug: st.error(f"Kanal ID bulunamadı: {channel_url}")
             return None, None
