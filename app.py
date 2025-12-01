@@ -107,23 +107,31 @@ def get_transcript(video_url):
                     sub_url = selected_sub[-1]['url'] # Hiçbiri yoksa sonuncuyu al
 
                 # Altyazı içeriğini indir
-                response = requests.get(sub_url)
-                
-                # Basitçe metne çevir (JSON3 veya VTT parse etmek yerine ham metni temizleyebiliriz veya basitçe döndürebiliriz)
-                # Şimdilik basitlik adına JSON ise içindeki textleri alalım
-                if 'json3' in sub_url or 'fmt=json3' in sub_url:
-                    data = response.json()
-                    text_content = ""
-                    if 'events' in data:
-                        for event in data['events']:
-                            if 'segs' in event:
-                                for seg in event['segs']:
-                                    if 'utf8' in seg:
-                                        text_content += seg['utf8'] + " "
-                    return text_content
-                else:
-                    # VTT veya diğer formatlar için basit temizlik (daha karmaşık olabilir ama şimdilik yeterli)
-                    return "Altyazı formatı desteklenmiyor veya metin çıkarılamadı."
+                try:
+                    response = requests.get(sub_url)
+                    response.raise_for_status() # HTTP hatası varsa fırlat
+                    
+                    # Basitçe metne çevir
+                    if 'json3' in sub_url or 'fmt=json3' in sub_url:
+                        try:
+                            data = response.json()
+                            text_content = ""
+                            if 'events' in data:
+                                for event in data['events']:
+                                    if 'segs' in event:
+                                        for seg in event['segs']:
+                                            if 'utf8' in seg:
+                                                text_content += seg['utf8'] + " "
+                            return text_content
+                        except ValueError: # JSON parse hatası
+                             # Bazen JSON yerine XML veya düz metin dönebilir, ham metni döndürmeyi dene
+                             return f"Altyazı formatı beklenmedik (JSON değil). Ham veri: {response.text[:100]}..."
+                    else:
+                        # VTT veya diğer formatlar
+                        return "Altyazı formatı (VTT) henüz tam desteklenmiyor, ancak indirildi."
+                except Exception as e:
+                    st.error(f"Altyazı indirilirken hata oluştu: {e}")
+                    return None
             else:
                 st.error("Bu videoda Türkçe veya İngilizce altyazı bulunamadı.")
                 return None
