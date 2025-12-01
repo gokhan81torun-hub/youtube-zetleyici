@@ -187,7 +187,59 @@ def get_transcript(video_url):
             print(f"Invidious ({instance}) hatası: {e}")
             continue
 
-    st.error("Tüm yöntemler denendi ancak altyazı alınamadı (YouTube IP engellemesi). Lütfen daha sonra tekrar deneyin.")
+    except Exception as e:
+        print(f"Invidious hatası: {e}")
+        pass
+
+    # 4. YÖNTEM: Piped API (Başka bir alternatif)
+    piped_instances = [
+        "https://pipedapi.kavin.rocks",
+        "https://pipedapi.tokhmi.xyz",
+        "https://pipedapi.moomoo.me",
+        "https://api.piped.privacy.com.de",
+        "https://pipedapi.smnz.de",
+        "https://pipedapi.adminforge.de"
+    ]
+
+    for instance in piped_instances:
+        try:
+            # Video bilgilerini çek
+            response = requests.get(f"{instance}/streams/{video_id}", timeout=10)
+            if response.status_code != 200: continue
+            
+            data = response.json()
+            subtitles = data.get('subtitles', [])
+            
+            selected_sub = None
+            # Türkçe veya İngilizce ara
+            for sub in subtitles:
+                if sub['code'] == 'tr':
+                    selected_sub = sub
+                    break
+            if not selected_sub:
+                for sub in subtitles:
+                    if sub['code'] == 'en':
+                        selected_sub = sub
+                        break
+            
+            if selected_sub:
+                # Altyazıyı indir
+                sub_url = selected_sub['url']
+                sub_response = requests.get(sub_url)
+                if sub_response.status_code == 200:
+                     # VTT formatında gelir, temizleyelim
+                    lines = sub_response.text.splitlines()
+                    text_content = ""
+                    for line in lines:
+                        if "-->" not in line and line.strip() and not line.strip().isdigit() and "WEBVTT" not in line:
+                            text_content += line + " "
+                    return text_content
+
+        except Exception as e:
+            print(f"Piped ({instance}) hatası: {e}")
+            continue
+
+    st.error("Üzgünüm, YouTube şu an tüm kapıları kapatmış durumda (IP Engellemesi). Lütfen 10-15 dakika sonra tekrar deneyin.")
     return None
 
 def summarize_text(text, api_key):
