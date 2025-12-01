@@ -343,6 +343,16 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"Hata: {e}")
 
+def highlight_keywords(text):
+    """Metindeki önemli finansal terimleri sarı ile vurgular."""
+    keywords = ["altın", "borsa", "nasdaq", "kripto", "bist", "bitcoin", "dolar", "euro", "gümüş"]
+    
+    # Regex deseni oluştur (büyük/küçük harf duyarsız)
+    for word in keywords:
+        pattern = re.compile(f"({word})", re.IGNORECASE)
+        text = pattern.sub(r'<span style="background-color: #ffd700; color: black; padding: 0px 4px; border-radius: 3px; font-weight: bold;">\1</span>', text)
+    return text
+
 def get_latest_video(channel_url):
     """Kanalın en son videosunu bulur."""
     try:
@@ -506,27 +516,4 @@ with tab2:
                                 key=f"dl_{video_data['url']}"
                             )
                             
-def highlight_keywords(text):
-    """Metindeki önemli finansal terimleri sarı ile vurgular."""
-    keywords = ["altın", "borsa", "nasdaq", "kripto", "bist", "bitcoin", "dolar", "euro", "gümüş"]
-    
-    # Regex deseni oluştur (büyük/küçük harf duyarsız)
-    # Kelime sınırlarını (\b) kullanarak sadece tam kelimeleri veya ek almış hallerini yakala
-    for word in keywords:
-        # (?i) case-insensitive flag
-        # Kelimenin kendisini koruyarak etrafına span ekle
-        pattern = re.compile(f"({word})", re.IGNORECASE)
-        text = pattern.sub(r'<span style="background-color: #ffd700; color: black; padding: 0px 4px; border-radius: 3px; font-weight: bold;">\1</span>', text)
-    return text
 
-# ... (Mevcut kodlar) ...
-
-                    # Özetleme
-                    summary = summarize_text(transcript_text, api_key)
-                    if summary:
-                        st.markdown(highlight_keywords(summary), unsafe_allow_html=True)
-
-
-# Footer
-st.markdown("---")
-st.caption("Bu uygulama Google Gemini ve YouTube Transcript API kullanır.")
