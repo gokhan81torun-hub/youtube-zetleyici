@@ -33,7 +33,8 @@ def get_market_data():
             "BTC-USD": "Bitcoin"
         }
         
-        data = yf.download(list(tickers.keys()), period="1d", interval="1m", progress=False)['Close'].iloc[-1]
+        # Son 5 günlük veriyi alıp, eksik verileri (hafta sonu/tatil) önceki günle dolduruyoruz (ffill)
+        data = yf.download(list(tickers.keys()), period="5d", interval="1d", progress=False)['Close'].ffill().iloc[-1]
         
         # Gram Altın Hesabı: (Ons * Dolar) / 31.1035
         dolar = data["USDTRY=X"]
@@ -51,49 +52,6 @@ def get_market_data():
     except Exception as e:
         return None
 
-def get_latest_video(channel_url):
-    """Kanalın BUGÜN yayınlanan videolarını bulur."""
-    try:
-        ydl_opts = {
-            'extract_flat': True,
-            'playlistend': 5,     # Son 5 videoya bak, belki bugün birden fazla video vardır
-            'quiet': True,
-        }
-        
-        today_str = datetime.now().strftime('%Y%m%d')
-        found_videos = []
-        
-        # Hem videoları hem canlı yayınları kontrol et
-        for tab in ["streams", "videos"]:
-            target_url = f"{channel_url}/{tab}"
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                try:
-                    info = ydl.extract_info(target_url, download=False)
-                    if 'entries' in info:
-                        for video in info['entries']:
-                            # Tarih kontrolü (upload_date bazen eksik olabilir)
-                            if video.get('upload_date') == today_str:
-                                found_videos.append({
-                                    'title': video['title'],
-                                    'url': video['url'],
-                                    'type': 'Canlı Yayın' if tab == 'streams' else 'Video',
-                                    'date': video.get('upload_date')
-                                })
-                except:
-                    pass
-        
-        # Eğer bugün video yoksa None, varsa listeyi döndür
-        # Ancak mevcut yapı tek video bekliyor, biz şimdilik en sonuncuyu döndürelim
-        # Veya kullanıcı "o günkü videolar" dediği için liste döndürmek daha doğru ama
-        # kodun geri kalanı tek video bekliyor. Şimdilik "Bugünün En Son Videosunu" döndürelim.
-        
-        if found_videos:
-            return found_videos[0] # En yenisi
-            
-        return None
-    except Exception as e:
-        return None
-
 # ... (Mevcut kodlar) ...
 
 # Ana Arayüz Başlangıcı (Başlık Altına)
@@ -104,13 +62,75 @@ today_date = datetime.now().strftime("%d.%m.%Y")
 market_data = get_market_data()
 
 if market_data:
-    cols = st.columns(6)
-    cols[0].metric("📅 Tarih", today_date)
-    cols[1].metric("💵 Dolar", market_data["Dolar"])
-    cols[2].metric("💶 Euro", market_data["Euro"])
-    cols[3].metric("🟡 Gram Altın", market_data["Gram Altın"])
-    cols[4].metric("📈 BIST 100", market_data["BIST 100"])
-    cols[5].metric("🪙 Bitcoin", market_data["Bitcoin"])
+    # CSS ile şık bir bilgi bandı
+    st.markdown(f"""
+    <style>
+        .market-container {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 10px;
+            background-color: #f0f2f6;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            justify-content: space-around;
+        }}
+        .market-item {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            padding: 8px 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-width: 100px;
+        }}
+        .market-label {{
+            font-size: 0.8em;
+            color: #666;
+            font-weight: bold;
+        }}
+        .market-value {{
+            font-size: 1.1em;
+            color: #333;
+            font-weight: bold;
+        }}
+        /* Dark mode uyumu için */
+        @media (prefers-color-scheme: dark) {{
+            .market-container {{ background-color: #262730; }}
+            .market-item {{ background-color: #0e1117; box-shadow: 0 2px 4px rgba(255,255,255,0.1); }}
+            .market-label {{ color: #aaa; }}
+            .market-value {{ color: #fff; }}
+        }}
+    </style>
+    
+    <div class="market-container">
+        <div class="market-item">
+            <span class="market-label">📅 Tarih</span>
+            <span class="market-value">{today_date}</span>
+        </div>
+        <div class="market-item">
+            <span class="market-label">💵 Dolar</span>
+            <span class="market-value">{market_data['Dolar']}</span>
+        </div>
+        <div class="market-item">
+            <span class="market-label">💶 Euro</span>
+            <span class="market-value">{market_data['Euro']}</span>
+        </div>
+        <div class="market-item">
+            <span class="market-label">🟡 Gram Altın</span>
+            <span class="market-value">{market_data['Gram Altın']}</span>
+        </div>
+        <div class="market-item">
+            <span class="market-label">📈 BIST 100</span>
+            <span class="market-value">{market_data['BIST 100']}</span>
+        </div>
+        <div class="market-item">
+            <span class="market-label">🪙 Bitcoin</span>
+            <span class="market-value">{market_data['Bitcoin']}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 else:
     st.info(f"📅 Tarih: {today_date} | Piyasa verileri alınıyor...")
 
