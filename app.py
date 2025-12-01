@@ -475,14 +475,14 @@ def highlight_keywords(text):
         text = pattern.sub(r'<span style="background-color: #ffd700; color: black; padding: 0px 4px; border-radius: 3px; font-weight: bold;">\1</span>', text)
     return text
 
-def get_latest_video(channel_url):
+def get_latest_video(channel_url, debug=False):
     """Kanalın en son videolarını bulur (son 24 saat içinde yüklenenler)."""
     try:
         ydl_opts = {
             'extract_flat': True, # Sadece başlıkları al, videoyu indirme
             'quiet': True,
-            'force_generic_extractor': True, # Genel extractor kullanmaya zorla
-            'playlistend': 10, # Son 10 videoyu kontrol et
+            'playlistend': 15, # Son 15 videoyu kontrol et
+            'no_cache_dir': True, # Cache kullanma, taze veri çek
         }
         
         found_videos = []
@@ -502,6 +502,10 @@ def get_latest_video(channel_url):
                         for entry in info['entries']:
                             if entry and entry.get('url') and entry.get('title'):
                                 upload_date_str = entry.get('upload_date')
+                                
+                                if debug:
+                                    st.write(f"🔍 Kontrol: {entry['title']} - Tarih: {upload_date_str}")
+                                
                                 if upload_date_str:
                                     upload_date = datetime.strptime(upload_date_str, '%Y%m%d')
                                     # Tarihi de timezone aware yapalım (karşılaştırma için gerekebilir ama .date() yetiyor)
@@ -516,11 +520,7 @@ def get_latest_video(channel_url):
                                         })
                                 
                 except Exception as e:
-                    # st.warning(f"yt-dlp ile {target_url} kontrol edilirken hata: {e}")
-                    pass # Hata durumunda diğer URL'ye geç
-                                
-                except Exception as e:
-                    # st.warning(f"yt-dlp ile {target_url} kontrol edilirken hata: {e}")
+                    if debug: st.warning(f"Hata ({target_url}): {e}")
                     pass # Hata durumunda diğer URL'ye geç
         
         # Eğer bugün video yoksa None, varsa listeyi döndür
@@ -529,6 +529,7 @@ def get_latest_video(channel_url):
             
         return None
     except Exception as e:
+        if debug: st.error(f"Genel Hata: {e}")
         return None
 
 # Ana Arayüz - Sekmeli Yapı
@@ -592,6 +593,9 @@ with tab2:
     st.header("Takip Edilen Kanallar")
     st.info("Bu kanalların en son yüklediği videoları veya canlı yayınları otomatik kontrol eder.")
     
+    # Geliştirici Modu
+    debug_mode = st.checkbox("🛠️ Geliştirici Modu (Hata Ayıklama)", help="Videoların neden bulunamadığını görmek için bunu açın.")
+
     # Varsayılan Kanallar
     default_channels = {
         "Cihat E. Çiçek": "https://www.youtube.com/@cihatecicek",
@@ -617,7 +621,7 @@ with tab2:
             for channel_name in selected_channels:
                 channel_url = default_channels[channel_name]
                 with st.status(f"**{channel_name}** kontrol ediliyor...") as status:
-                    latest_videos = get_latest_video(channel_url)
+                    latest_videos = get_latest_video(channel_url, debug=debug_mode)
                     if latest_videos:
                         count = len(latest_videos)
                         status.update(label=f"✅ {channel_name}: {count} yeni içerik bulundu!", state="complete")
