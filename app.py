@@ -559,16 +559,17 @@ def get_channel_id(channel_url):
                                 st.download_button(
                                     label="📥 Metni İndir",
                                     data=transcript_text,
-                                    file_name=f"{channel_name}_ozet.txt",
-                                    mime="text/plain",
-                                    key=f"dl_{video_data['url']}"
-                                )
-                                
-                                # Özetleme
-                                summary = summarize_text(transcript_text, api_key)
-                                if summary:
-                                    st.markdown(highlight_keywords(summary), unsafe_allow_html=True)
-            st.markdown("---")
+def get_latest_video(channel_url, debug=False):
+    """RSS Beslemesi üzerinden kanalın BUGÜN yayınlanan videolarını bulur."""
+    try:
+        channel_id = get_channel_id(channel_url)
+        
+        if debug:
+            st.write(f"🆔 Kanal ID: {channel_id}")
+            
+        if not channel_id:
+            if debug: st.error(f"Kanal ID bulunamadı: {channel_url}")
+            return None, None
 
         rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
         response = requests.get(rss_url, timeout=5)
@@ -589,15 +590,12 @@ def get_channel_id(channel_url):
         now = datetime.now(tr_timezone)
         
         for entry in root.findall(f'{ns}entry'):
-            title = entry.find(f'{ns}title').text
-            link = entry.find(f'{ns}link').attrib['href']
-            published_str = entry.find(f'{ns}published').text # Örn: 2025-12-01T15:30:00+00:00
-            
-            # Tarihi parse et (ISO formatı)
-            # Python 3.7+ fromisoformat tam desteklemiyor olabilir, manuel parse edelim veya basitçe
-            # published_str genellikle UTC gelir (+00:00)
-            
             try:
+                title = entry.find(f'{ns}title').text
+                link = entry.find(f'{ns}link').attrib['href']
+                published_str = entry.find(f'{ns}published').text # Örn: 2025-12-01T15:30:00+00:00
+                
+                # Tarihi parse et (ISO formatı)
                 # Basit ISO parse (Z veya +00:00 için)
                 if published_str.endswith('Z'):
                     published_str = published_str[:-1] + '+00:00'
