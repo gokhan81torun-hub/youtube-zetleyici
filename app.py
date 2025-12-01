@@ -475,68 +475,107 @@ def highlight_keywords(text):
         text = pattern.sub(r'<span style="background-color: #ffd700; color: black; padding: 0px 4px; border-radius: 3px; font-weight: bold;">\1</span>', text)
     return text
 
-def get_latest_video(channel_url, debug=False):
-    """Kanalın en son videolarını bulur (son 24 saat içinde yüklenenler)."""
+import xml.etree.ElementTree as ET
+
+def get_channel_id(channel_url):
+    """Kanal URL'sinden Channel ID'yi (UC...) bulur."""
     try:
-        ydl_opts = {
-            'extract_flat': True, # Sadece başlıkları al, videoyu indirme
-            'quiet': True,
-            'playlistend': 15, # Son 15 videoyu kontrol et
-            'no_cache_dir': True, # Cache kullanma, taze veri çek
-            'ignoreerrors': True, # Hataları görmezden gel
-        }
+        # 1. Yöntem: URL'de zaten ID varsa
+        if "/channel/" in channel_url:
+            return channel_url.split("/channel/")[1].split("/")[0]
+        
+        # 2. Yöntem: Sayfa kaynağından regex ile bul
+        response = requests.get(channel_url, headers={'User-Agent': 'Mozilla/5.0'})
+        if response.status_code == 200:
+            match = re.search(r'"channelId":"(UC[\w-]+)"', response.text)
+            if match:
+                return match.group(1)
+            
+            # Alternatif regex
+            match = re.search(r'itemprop="channelId" content="(UC[\w-]+)"', response.text)
+            if match:
+                return match.group(1)
+                
+        return None
+    except:
+        return None
+
+def get_latest_video(channel_url, debug=False):
+    """RSS Beslemesi üzerinden kanalın BUGÜN yayınlanan videolarını bulur."""
+    try:
+        channel_id = get_channel_id(channel_url)
+        if not channel_id:
+            if debug: st.error(f"Kanal ID bulunamadı: {channel_url}")
+            return None, None
+
+        rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+        response = requests.get(rss_url, timeout=5)
+        
+        if response.status_code != 200:
+            if debug: st.error(f"RSS çekilemedi: {response.status_code}")
+            return None, None
+
+        root = ET.fromstring(response.content)
+        ns = '{http://www.w3.org/2005/Atom}'
+        yt_ns = '{http://www.youtube.com/xml/schemas/2015}'
         
         found_videos = []
-        last_found_video = None # Hata ayıklama için en son bulunan video
+        last_found_video = None
         
         # Türkiye saati (UTC+3)
         tr_timezone = timezone(timedelta(hours=3))
         now = datetime.now(tr_timezone)
         
-        # Kanalın "videos" ve "streams" (canlı yayın) sekmelerini kontrol et
-        # Önce canlı yayınlara bakalım (genelde bunlar isteniyor)
-        target_urls = [f"{channel_url}/streams", f"{channel_url}/videos"]
-        
-        for target_url in target_urls:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                try:
-                    info = ydl.extract_info(target_url, download=False)
-                    if 'entries' in info and info['entries']:
-                        for entry in info['entries']:
-                            if entry and entry.get('url') and entry.get('title'):
-                                upload_date_str = entry.get('upload_date')
-                                
-                                if debug:
-                                    st.write(f"🔍 Kontrol: {entry['title']} - Tarih: {upload_date_str}")
-                                
-                                if upload_date_str:
-                                    upload_date = datetime.strptime(upload_date_str, '%Y%m%d')
-                                    
-                                    # En son videoyu kaydet (tarih ne olursa olsun)
-                                    # İlk entry genelde en yenisidir, o yüzden sadece ilkini alalım
-                                    if last_found_video is None:
-                                        last_found_video = {
-                                            'title': entry['title'],
-                                            'date': upload_date.strftime("%d.%m.%Y")
-                                        }
-                                    
-                                    # Sadece BUGÜN yüklenenleri kontrol et (Gün/Ay/Yıl eşitliği)
-                                    if upload_date.date() == now.date():
-                                        found_videos.append({
-                                            'title': entry['title'],
-                                            'url': entry['url'],
-                                            'type': 'Canlı Yayın' if 'streams' in target_url else 'Video',
-                                            'date': upload_date.strftime("%d.%m.%Y")
-                                        })
-                                
-                except Exception as e:
-                    if debug: st.warning(f"Hata ({target_url}): {e}")
-                    pass # Hata durumunda diğer URL'ye geç
-        
+        for entry in root.findall(f'{ns}entry'):
+            title = entry.find(f'{ns}title').text
+            link = entry.find(f'{ns}link').attrib['href']
+            published_str = entry.find(f'{ns}published').text # Örn: 2025-12-01T15:30:00+00:00
+            
+            # Tarihi parse et (ISO formatı)
+            # Python 3.7+ fromisoformat tam desteklemiyor olabilir, manuel parse edelim veya basitçe
+            # published_str genellikle UTC gelir (+00:00)
+            
+            try:
+                # Basit ISO parse (Z veya +00:00 için)
+                if published_str.endswith('Z'):
+                    published_str = published_str[:-1] + '+00:00'
+                
+                published_dt = datetime.fromisoformat(published_str)
+                
+                # Eğer timezone bilgisi yoksa UTC varsay
+                if published_dt.tzinfo is None:
+                    published_dt = published_dt.replace(tzinfo=timezone.utc)
+                
+                # Türkiye saatine çevir
+                published_tr = published_dt.astimezone(tr_timezone)
+                
+                if debug:
+                    st.write(f"🔍 RSS: {title} | Tarih: {published_tr.strftime('%d.%m.%Y %H:%M')} (TR)")
+                
+                # Son videoyu kaydet
+                if last_found_video is None:
+                    last_found_video = {
+                        'title': title,
+                        'date': published_tr.strftime("%d.%m.%Y %H:%M")
+                    }
+                
+                # Bugün mü?
+                if published_tr.date() == now.date():
+                    found_videos.append({
+                        'title': title,
+                        'url': link,
+                        'type': 'Video/Canlı', # RSS ayrım yapmaz ama genelde Video'dur
+                        'date': published_tr.strftime("%d.%m.%Y")
+                    })
+                    
+            except Exception as e:
+                if debug: st.warning(f"Tarih hatası: {e}")
+                continue
+
         return found_videos, last_found_video
 
     except Exception as e:
-        if debug: st.error(f"Genel Hata: {e}")
+        if debug: st.error(f"RSS Genel Hata: {e}")
         return None, None
 
 # Ana Arayüz - Sekmeli Yapı
