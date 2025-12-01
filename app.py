@@ -132,8 +132,63 @@ def get_transcript(video_url):
         return text_formatted
 
     except Exception as e:
-        st.error(f"Her iki yöntemle de altyazı alınamadı. (Hata: {e})")
-        return None
+        print(f"youtube-transcript-api hatası: {e}")
+        pass
+
+    # 3. YÖNTEM: Invidious API (Proxy / Yedek Sunucular)
+    # YouTube doğrudan engelliyorsa, aracı sunucular (Invidious) üzerinden deneyelim.
+    invidious_instances = [
+        "https://inv.tux.pizza",
+        "https://invidious.projectsegfau.lt",
+        "https://vid.puffyan.us",
+        "https://invidious.fdn.fr",
+        "https://invidious.drgns.space"
+    ]
+
+    video_id = extract_video_id(video_url)
+    if not video_id: return None
+
+    for instance in invidious_instances:
+        try:
+            # Altyazı listesini çek
+            list_url = f"{instance}/api/v1/captions/{video_id}"
+            response = requests.get(list_url, timeout=5)
+            if response.status_code != 200: continue
+            
+            captions = response.json()
+            selected_caption = None
+            
+            # Türkçe veya İngilizce ara
+            for cap in captions:
+                if cap['languageCode'] == 'tr':
+                    selected_caption = cap
+                    break
+            if not selected_caption:
+                for cap in captions:
+                    if cap['languageCode'] == 'en':
+                        selected_caption = cap
+                        break
+            
+            if selected_caption:
+                # Altyazıyı indir
+                cap_url = f"{instance}{selected_caption['url']}"
+                cap_response = requests.get(cap_url, timeout=5)
+                
+                if cap_response.status_code == 200:
+                    # VTT formatında gelir, basitçe temizleyelim
+                    # VTT temizliği: Zaman damgalarını ve başlıkları kaldır
+                    lines = cap_response.text.splitlines()
+                    text_content = ""
+                    for line in lines:
+                        if "-->" not in line and line.strip() and not line.strip().isdigit() and "WEBVTT" not in line:
+                            text_content += line + " "
+                    return text_content
+        except Exception as e:
+            print(f"Invidious ({instance}) hatası: {e}")
+            continue
+
+    st.error("Tüm yöntemler denendi ancak altyazı alınamadı (YouTube IP engellemesi). Lütfen daha sonra tekrar deneyin.")
+    return None
 
 def summarize_text(text, api_key):
     """Metni Gemini ile özetler."""
