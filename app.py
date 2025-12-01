@@ -18,7 +18,7 @@ st.set_page_config(
 
 # Başlık ve Açıklama
 import yfinance as yf
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 # ... (Mevcut importlar ve ayarlar) ...
 
@@ -486,7 +486,9 @@ def get_latest_video(channel_url):
         }
         
         found_videos = []
-        now = datetime.now()
+        # Türkiye saati (UTC+3)
+        tr_timezone = timezone(timedelta(hours=3))
+        now = datetime.now(tr_timezone)
         
         # Kanalın "videos" ve "streams" (canlı yayın) sekmelerini kontrol et
         # Önce canlı yayınlara bakalım (genelde bunlar isteniyor)
@@ -502,6 +504,8 @@ def get_latest_video(channel_url):
                                 upload_date_str = entry.get('upload_date')
                                 if upload_date_str:
                                     upload_date = datetime.strptime(upload_date_str, '%Y%m%d')
+                                    # Tarihi de timezone aware yapalım (karşılaştırma için gerekebilir ama .date() yetiyor)
+                                    
                                     # Sadece BUGÜN yüklenenleri kontrol et (Gün/Ay/Yıl eşitliği)
                                     if upload_date.date() == now.date():
                                         found_videos.append({
@@ -510,14 +514,10 @@ def get_latest_video(channel_url):
                                             'type': 'Canlı Yayın' if 'streams' in target_url else 'Video',
                                             'date': upload_date.strftime("%d.%m.%Y")
                                         })
-                                # Canlı yayınlar için tarih bilgisi olmayabilir, yine de ekleyelim
-                                elif 'streams' in target_url:
-                                    found_videos.append({
-                                        'title': entry['title'],
-                                        'url': entry['url'],
-                                        'type': 'Canlı Yayın',
-                                        'date': 'Canlı' # Canlı yayınlar için özel etiket
-                                    })
+                                
+                except Exception as e:
+                    # st.warning(f"yt-dlp ile {target_url} kontrol edilirken hata: {e}")
+                    pass # Hata durumunda diğer URL'ye geç
                                 
                 except Exception as e:
                     # st.warning(f"yt-dlp ile {target_url} kontrol edilirken hata: {e}")
