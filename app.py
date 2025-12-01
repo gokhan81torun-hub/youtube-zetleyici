@@ -55,89 +55,84 @@ import yt_dlp
 import requests
 
 def get_transcript(video_url):
-    """Videonun altyazılarını yt-dlp ile çeker."""
+    """Videonun altyazılarını çeker (Hibrit Yöntem: yt-dlp + youtube-transcript-api)."""
+    
+    # 1. YÖNTEM: yt-dlp (Öncelikli)
     try:
-        # Video ID yerine tam URL kullanıyoruz artık
-        if "youtube.com" not in video_url and "youtu.be" not in video_url:
-             # Eğer sadece ID geldiyse URL'ye çevir
-             video_url = f"https://www.youtube.com/watch?v={video_url}"
-
+        # User-Agent ekleyerek 429 hatasını azaltmaya çalışalım
         ydl_opts = {
             'writesubtitles': True,
             'writeautomaticsub': True,
-            'skip_download': True,  # Videoyu indirme, sadece bilgi al
+            'skip_download': True,
             'subtitleslangs': ['tr', 'en'],
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
         }
+
+        # URL düzeltme
+        if "youtube.com" not in video_url and "youtu.be" not in video_url:
+             video_url = f"https://www.youtube.com/watch?v={video_url}"
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
             
-            # Altyazıları kontrol et (önce manuel, sonra otomatik)
             subtitles = info.get('subtitles', {})
             auto_captions = info.get('automatic_captions', {})
             
-            # Türkçe altyazı ara
             selected_sub = None
-            
-            # 1. Manuel Türkçe
-            if 'tr' in subtitles:
-                selected_sub = subtitles['tr']
-            # 2. Otomatik Türkçe
-            elif 'tr' in auto_captions:
-                selected_sub = auto_captions['tr']
-            # 3. Manuel İngilizce
-            elif 'en' in subtitles:
-                selected_sub = subtitles['en']
-            # 4. Otomatik İngilizce
-            elif 'en' in auto_captions:
-                selected_sub = auto_captions['en']
+            if 'tr' in subtitles: selected_sub = subtitles['tr']
+            elif 'tr' in auto_captions: selected_sub = auto_captions['tr']
+            elif 'en' in subtitles: selected_sub = subtitles['en']
+            elif 'en' in auto_captions: selected_sub = auto_captions['en']
             
             if selected_sub:
-                # Altyazı formatlarından 'json3' veya 'vtt' olanı seç
-                # Genelde en sonda en iyi format olur, json3 varsa onu alalım
                 sub_url = None
                 for fmt in selected_sub:
                     if fmt['ext'] == 'json3':
                         sub_url = fmt['url']
                         break
-                    if fmt['ext'] == 'vtt': # Yedek olarak vtt
-                        sub_url = fmt['url']
-                
-                if not sub_url:
-                    sub_url = selected_sub[-1]['url'] # Hiçbiri yoksa sonuncuyu al
+                if not sub_url: sub_url = selected_sub[-1]['url']
 
-                # Altyazı içeriğini indir
-                try:
-                    response = requests.get(sub_url)
-                    response.raise_for_status() # HTTP hatası varsa fırlat
-                    
-                    # Basitçe metne çevir
-                    if 'json3' in sub_url or 'fmt=json3' in sub_url:
-                        try:
-                            data = response.json()
-                            text_content = ""
-                            if 'events' in data:
-                                for event in data['events']:
-                                    if 'segs' in event:
-                                        for seg in event['segs']:
-                                            if 'utf8' in seg:
-                                                text_content += seg['utf8'] + " "
-                            return text_content
-                        except ValueError: # JSON parse hatası
-                             # Bazen JSON yerine XML veya düz metin dönebilir, ham metni döndürmeyi dene
-                             return f"Altyazı formatı beklenmedik (JSON değil). Ham veri: {response.text[:100]}..."
-                    else:
-                        # VTT veya diğer formatlar
-                        return "Altyazı formatı (VTT) henüz tam desteklenmiyor, ancak indirildi."
-                except Exception as e:
-                    st.error(f"Altyazı indirilirken hata oluştu: {e}")
-                    return None
-            else:
-                st.error("Bu videoda Türkçe veya İngilizce altyazı bulunamadı.")
-                return None
+                response = requests.get(sub_url)
+                response.raise_for_status()
+                
+                if 'json3' in sub_url or 'fmt=json3' in sub_url:
+                    data = response.json()
+                    text_content = ""
+                    if 'events' in data:
+                        for event in data['events']:
+                            if 'segs' in event:
+                                for seg in event['segs']:
+                                    if 'utf8' in seg:
+                                        text_content += seg['utf8'] + " "
+                    return text_content
+    except Exception as e:
+        print(f"yt-dlp hatası: {e}")
+        # Hata durumunda pass geçip 2. yönteme düşecek
+        pass
+
+    # 2. YÖNTEM: youtube-transcript-api (Yedek / Fallback)
+    try:
+        video_id = extract_video_id(video_url)
+        if not video_id:
+            return None
+            
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        
+        # Önce Türkçe, yoksa İngilizce, o da yoksa otomatik çeviri
+        try:
+            transcript = transcript_list.find_transcript(['tr', 'en'])
+        except:
+            # Bulamazsa herhangi birini alıp Türkçe'ye çevir
+            transcript = transcript_list.find_transcript(['en']).translate('tr')
+            
+        formatter = TextFormatter()
+        text_formatted = formatter.format_transcript(transcript.fetch())
+        return text_formatted
 
     except Exception as e:
-        st.error(f"Altyazı alınamadı (yt-dlp): {e}")
+        st.error(f"Her iki yöntemle de altyazı alınamadı. (Hata: {e})")
         return None
 
 def summarize_text(text, api_key):
