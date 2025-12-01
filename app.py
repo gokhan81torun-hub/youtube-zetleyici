@@ -53,6 +53,15 @@ def extract_video_id(url):
 
 import yt_dlp
 import requests
+import re
+
+def clean_xml_transcript(text):
+    """XML/TTML formatındaki altyazıları temizler."""
+    # 1. XML taglerini kaldır (<p...>, </p>, <br/> vb.)
+    text = re.sub(r'<[^>]+>', ' ', text)
+    # 2. Fazla boşlukları temizle
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
 
 def get_transcript(video_url):
     """Videonun altyazılarını çeker (Hibrit Yöntem: yt-dlp + youtube-transcript-api)."""
@@ -235,7 +244,7 @@ def get_transcript(video_url):
                     for line in lines:
                         if "-->" not in line and line.strip() and not line.strip().isdigit() and "WEBVTT" not in line:
                             text_content += line + " "
-                    return text_content
+                    return clean_xml_transcript(text_content)
 
         except Exception:
             continue
