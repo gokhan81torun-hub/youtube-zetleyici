@@ -483,9 +483,12 @@ def get_latest_video(channel_url, debug=False):
             'quiet': True,
             'playlistend': 15, # Son 15 videoyu kontrol et
             'no_cache_dir': True, # Cache kullanma, taze veri çek
+            'ignoreerrors': True, # Hataları görmezden gel
         }
         
         found_videos = []
+        last_found_video = None # Hata ayıklama için en son bulunan video
+        
         # Türkiye saati (UTC+3)
         tr_timezone = timezone(timedelta(hours=3))
         now = datetime.now(tr_timezone)
@@ -508,7 +511,14 @@ def get_latest_video(channel_url, debug=False):
                                 
                                 if upload_date_str:
                                     upload_date = datetime.strptime(upload_date_str, '%Y%m%d')
-                                    # Tarihi de timezone aware yapalım (karşılaştırma için gerekebilir ama .date() yetiyor)
+                                    
+                                    # En son videoyu kaydet (tarih ne olursa olsun)
+                                    # İlk entry genelde en yenisidir, o yüzden sadece ilkini alalım
+                                    if last_found_video is None:
+                                        last_found_video = {
+                                            'title': entry['title'],
+                                            'date': upload_date.strftime("%d.%m.%Y")
+                                        }
                                     
                                     # Sadece BUGÜN yüklenenleri kontrol et (Gün/Ay/Yıl eşitliği)
                                     if upload_date.date() == now.date():
@@ -523,14 +533,11 @@ def get_latest_video(channel_url, debug=False):
                     if debug: st.warning(f"Hata ({target_url}): {e}")
                     pass # Hata durumunda diğer URL'ye geç
         
-        # Eğer bugün video yoksa None, varsa listeyi döndür
-        if found_videos:
-            return found_videos # Tüm videoları liste olarak döndür
-            
-        return None
+        return found_videos, last_found_video
+
     except Exception as e:
         if debug: st.error(f"Genel Hata: {e}")
-        return None
+        return None, None
 
 # Ana Arayüz - Sekmeli Yapı
 tab1, tab2 = st.tabs(["📺 Video Linki ile Özetle", "📡 Otomatik Takip"])
@@ -621,13 +628,17 @@ with tab2:
             for channel_name in selected_channels:
                 channel_url = default_channels[channel_name]
                 with st.status(f"**{channel_name}** kontrol ediliyor...") as status:
-                    latest_videos = get_latest_video(channel_url, debug=debug_mode)
+                    latest_videos, last_video = get_latest_video(channel_url, debug=debug_mode)
+                    
                     if latest_videos:
                         count = len(latest_videos)
                         status.update(label=f"✅ {channel_name}: {count} yeni içerik bulundu!", state="complete")
                         st.session_state.channel_results[channel_name] = latest_videos
                     else:
-                        status.update(label=f"❌ {channel_name}: Bugün yeni video yok.", state="error")
+                        msg = f"❌ {channel_name}: Bugün yeni video yok."
+                        if last_video:
+                            msg += f" (Son Video: '{last_video['title']}' - {last_video['date']})"
+                        status.update(label=msg, state="error")
     
     # Sonuçları Göster (Butona basılmasa bile hafızadan göster)
     if st.session_state.channel_results:
